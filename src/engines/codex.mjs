@@ -92,6 +92,19 @@ export function parseCodexSession(text, fileInfo = {}) {
         }
         continue;
       }
+      // Human/assistant turns live on event_msg (response_item also echoes the
+      // prompt + injected/bootstrap messages, which would over-count turns).
+      if (ptype === "user_message") {
+        const text = flattenText(payload.message ?? payload.text ?? "");
+        session.events.push({ kind: "message", ts, role: "user", text });
+        if (!session.title && text && !isBootstrapText(text)) session.title = truncate(text, 80);
+        continue;
+      }
+      if (ptype === "agent_message") {
+        const text = flattenText(payload.message ?? payload.text ?? "");
+        session.events.push({ kind: "message", ts, role: "assistant", text });
+        continue;
+      }
       if (ptype && /compact/i.test(ptype)) {
         session.events.push({ kind: "compaction", ts });
       }
@@ -99,14 +112,7 @@ export function parseCodexSession(text, fileInfo = {}) {
     }
 
     if (type === "response_item") {
-      if (ptype === "message") {
-        const role = typeof payload.role === "string" ? payload.role : "assistant";
-        const textContent = flattenText(payload.content);
-        session.events.push({ kind: "message", ts, role, text: textContent });
-        if (role === "user" && !session.title && textContent) {
-          session.title = truncate(textContent, 80);
-        }
-      } else if (ptype === "function_call") {
+      if (ptype === "function_call") {
         session.events.push({
           kind: "tool_call",
           ts,
@@ -115,12 +121,11 @@ export function parseCodexSession(text, fileInfo = {}) {
           callId: typeof payload.call_id === "string" ? payload.call_id : undefined,
         });
       } else if (ptype === "function_call_output") {
-        const outputText = flattenText(isRecord(payload.output) ? payload.output : payload.output);
         session.events.push({
           kind: "tool_result",
           ts,
           callId: typeof payload.call_id === "string" ? payload.call_id : undefined,
-          ok: !codexOutputLooksFailed(outputText),
+          ok: !codexOutputLooksFailed(payload.output),
         });
       } else if (ptype === "web_search_call") {
         session.events.push({ kind: "web_search", ts });
@@ -149,6 +154,13 @@ function normalizeCodexUsage(raw) {
 
 function truncate(s, n) {
   return s.length > n ? `${s.slice(0, n - 1)}…` : s;
+}
+
+// The first Codex user turn is usually the injected AGENTS.md / instructions
+// bootstrap, not a real prompt — skip it when picking a title.
+function isBootstrapText(text) {
+  const head = text.slice(0, 200);
+  return /^#?\s*AGENTS\.md|<INSTRUCTIONS>|^#\s*全局指令|<user_instructions>/i.test(head);
 }
 
 function sessionIdFromPath(filePath) {

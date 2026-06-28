@@ -41,7 +41,19 @@ compaction no longer silently drops a turn's tokens.
 
 ## Status
 
-Increment 1: discovery + codex/claude parse + **token-events projection** (verified
-against real logs — 508/508 parity on no-reset Codex sessions). Next: metrics
-projection (agent-retro), snapshot projection + privacy (codex-snapshots), then wire
-the consumers to drop their duplicate parsers. See DESIGN.md §5.
+- **Increment 1** — discovery + codex/claude parse + **token-events** projection.
+  Verified: 508/508 parity on no-reset Codex sessions; reset-aware deltas recover
+  tokens the naive method under-counts (up to 5.5× on compaction sessions).
+- **Increment 2** — **metrics** projection (agent-retro's contract).
+  Verified against agent-retro's own parser+analyzer on 200 real sessions: turns /
+  toolCount / toolFails / cacheRate / failRate / durationMs / score / grade all match.
+  Fixes at the source: codex webSearches (was always 0 → 265 recovered), duration
+  inflation (raw end-start over-reports session time 17.5× → `activeDurationMs`),
+  codex `model` (was always empty).
+
+Next: wire agent-retro onto this core (+ history/trend + cost + action list), then
+token-board, then the snapshot projection for codex-snapshots. See DESIGN.md §5.
+
+```bash
+node scripts/parity-metrics.mjs --days 14   # diff this package's metrics vs agent-retro
+```

@@ -6,6 +6,7 @@ export { parseSessionFile, parseSessionText, detectEngine } from "./parse.mjs";
 export { parseCodexSession } from "./engines/codex.mjs";
 export { parseClaudeSession } from "./engines/claude.mjs";
 export { toTokenEvents, sessionTokenTotals } from "./projections/token-events.mjs";
+export { toMetrics, grade } from "./projections/metrics.mjs";
 export { DEFAULT_MODEL_PRICING, resolvePricing, estimateCostUsd } from "./pricing.mjs";
 
 import { discoverSessionFiles } from "./discovery.mjs";

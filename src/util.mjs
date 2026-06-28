@@ -59,16 +59,27 @@ export function isoOrEmpty(value) {
   return typeof value === "string" ? value : "";
 }
 
-/**
- * Heuristic: did a Codex function_call_output indicate failure?
- * Codex has no structured is_error, so we sniff the output text — same spirit as
- * agent-retro's looksFailed, kept conservative to avoid false positives.
- */
-export function codexOutputLooksFailed(outputText) {
-  if (typeof outputText !== "string" || !outputText) return false;
-  const head = outputText.slice(0, 400).toLowerCase();
-  return (
-    /\b(command failed|exit code [1-9]|exit status [1-9]|traceback \(most recent|fatal:|error:|errno)\b/.test(head) ||
-    /\bnpm err!|\bbun(?:x)? error\b/.test(head)
-  );
+// Codex exec output has no exit code, so failures are sniffed from the first chunk
+// of output. Markers + 1200-char window mirror agent-retro's looksFailed exactly so
+// the unified parser reproduces its failure rate (conservative: under-count, never
+// flag a command that merely prints the word "error").
+const CODEX_ERROR_MARKERS = [
+  /\bcommand not found\b/i,
+  /\bno such file or directory\b/i,
+  /\bpermission denied\b/i,
+  /\bnot a git repository\b/i,
+  /\bfatal:/i,
+  /\berror:/i,
+  /\bTraceback \(most recent call last\)/,
+  /\bException\b/,
+  /\bnpm ERR!/,
+  /\bexit code: [1-9]/i,
+  /\bexit status [1-9]/i,
+];
+
+/** @param {unknown} output raw payload.output (stringified, like agent-retro). */
+export function codexOutputLooksFailed(output) {
+  if (output == null || output === "") return false;
+  const head = String(output).slice(0, 1200);
+  return CODEX_ERROR_MARKERS.some((re) => re.test(head));
 }

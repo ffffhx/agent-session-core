@@ -67,12 +67,16 @@ export function parseClaudeSession(text, fileInfo = {}) {
     const message = isRecord(row.message) ? row.message : null;
 
     if (type === "user" && message) {
-      const { text: msgText } = splitClaudeContent(message.content);
+      const content = message.content;
       // Tool results arrive as user rows; surface them as tool_result, not turns.
-      for (const tr of toolResultsFrom(message.content)) {
+      for (const tr of toolResultsFrom(content)) {
         session.events.push({ kind: "tool_result", ts, callId: tr.callId, ok: tr.ok });
       }
-      if (msgText) {
+      // A genuine human turn = a user row that is not purely tool-result echoes.
+      const isToolResultOnly =
+        Array.isArray(content) && content.length > 0 && content.every((c) => isRecord(c) && c.type === "tool_result");
+      if (!isToolResultOnly) {
+        const { text: msgText } = splitClaudeContent(content);
         session.events.push({
           kind: "message",
           ts,
@@ -81,7 +85,7 @@ export function parseClaudeSession(text, fileInfo = {}) {
           isSidechain: row.isSidechain === true,
           isMeta: row.isMeta === true,
         });
-        if (!firstUser) firstUser = msgText;
+        if (!firstUser && msgText) firstUser = msgText;
       }
       continue;
     }

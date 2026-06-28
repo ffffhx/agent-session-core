@@ -113,6 +113,43 @@ export function parseCodexSession(text: string, fileInfo?: { filePath?: string; 
 export function parseClaudeSession(text: string, fileInfo?: { filePath?: string; mtimeMs?: number; sizeBytes?: number }): NormalizedSession;
 export function toTokenEvents(session: NormalizedSession, ctx?: TokenEventContext): TokenUsageEvent[];
 export function sessionTokenTotals(session: NormalizedSession, ctx?: TokenEventContext): SessionTokenTotals;
+
+export interface SessionMetrics {
+  durationMs: number;
+  activeDurationMs: number;
+  toolCount: number;
+  toolFails: number;
+  failRate: number;
+  cacheRate: number;
+  reasoningRate: number;
+  loops: Array<{ name: string; count: number; sample: string }>;
+  loopCalls: number;
+  tokensPerTurn: number;
+}
+
+export interface SessionMetricsResult {
+  engine: Engine;
+  id: string;
+  cwd: string;
+  project: string;
+  model: string;
+  gitBranch: string;
+  startedAt: string;
+  endedAt: string;
+  title: string;
+  tokens: { input: number; cached: number; output: number; reasoning: number; total: number };
+  turns: number;
+  compactions: number;
+  webSearches: number;
+  reasoningBlocks: number;
+  score: number;
+  grade: string;
+  deductions: Array<{ reason: string; points: number }>;
+  metrics: SessionMetrics;
+}
+
+export function toMetrics(session: NormalizedSession, options?: { idleGapMs?: number }): SessionMetricsResult;
+export function grade(score: number): string;
 export function loadSessions(options?: DiscoverOptions): NormalizedSession[];
 export const DEFAULT_MODEL_PRICING: PricingEntry[];
 export function resolvePricing(override?: string | unknown[]): PricingEntry[];
