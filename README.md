@@ -51,9 +51,8 @@ compaction no longer silently drops a turn's tokens.
   inflation (raw end-start over-reports session time 17.5× → `activeDurationMs`),
   codex `model` (was always empty).
 
-Next: wire agent-retro onto this core (+ history/trend + cost + action list), then
-token-board, then the snapshot projection for codex-snapshots. See DESIGN.md §5.
-
-```bash
-node scripts/parity-metrics.mjs --days 14   # diff this package's metrics vs agent-retro
-```
+> Note: agent-retro — the original retrospective consumer that motivated the
+> metrics projection — was removed on 2026-06-28. The metrics projection remains as
+> a tested, consumer-less capability (still useful for an efficiency view on
+> token-board, or a future tool). Next consumer to wire: token-board, then the
+> snapshot projection for codex-snapshots. See DESIGN.md §5.
