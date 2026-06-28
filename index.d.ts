@@ -12,13 +12,22 @@ export type NormalizedTokenUsage = {
   reasoning: number;
 };
 
+export interface NormalizedImage {
+  src: string;
+  alt?: string;
+  mimeType?: string;
+  size?: string;
+  detail?: string;
+  unavailableReason?: string;
+}
+
 export type NormalizedEvent =
-  | { kind: "message"; ts: string; role: "user" | "assistant" | "system"; text: string; isSidechain?: boolean; isMeta?: boolean }
+  | { kind: "message"; ts: string; role: "user" | "assistant" | "system"; text: string; images?: NormalizedImage[]; internal?: boolean; isSidechain?: boolean; isMeta?: boolean }
   | { kind: "tool_call"; ts: string; name: string; args: unknown; callId?: string }
-  | { kind: "tool_result"; ts: string; callId?: string; ok: boolean }
+  | { kind: "tool_result"; ts: string; name?: string; callId?: string; ok: boolean; outputText?: string }
   | { kind: "token_usage"; ts: string; usage: NormalizedTokenUsage }
   | { kind: "compaction"; ts: string }
-  | { kind: "web_search"; ts: string }
+  | { kind: "web_search"; ts: string; query?: string }
   | { kind: "reasoning"; ts: string };
 
 export interface NormalizedSession {
@@ -34,8 +43,67 @@ export interface NormalizedSession {
   mtimeMs: number;
   sizeBytes: number;
   title: string;
+  goalObjective: string;
   events: NormalizedEvent[];
 }
+
+export interface SnapshotImage {
+  src?: string;
+  alt?: string;
+  unavailableReason?: string;
+}
+
+export interface SnapshotTurn {
+  kind?: string;
+  role?: string;
+  name?: string;
+  turn?: number;
+  text?: string;
+  html?: string;
+  images?: SnapshotImage[];
+  timestamp?: string;
+}
+
+export interface Snapshot {
+  id?: string;
+  ref?: string;
+  title?: string;
+  engine?: string;
+  engineLabel?: string;
+  sourceDetail?: string;
+  goalObjective?: string;
+  cwd?: string;
+  displayCwd?: string;
+  filePath?: string;
+  displayFilePath?: string;
+  generatedAt?: string;
+  redacted?: boolean;
+  size?: number;
+  turnCount?: number;
+  tokenUsage?: {
+    inputTokens?: number;
+    cachedInputTokens?: number;
+    outputTokens?: number;
+    reasoningOutputTokens?: number;
+    totalTokens?: number;
+    updatedAt?: string;
+  };
+  turns?: SnapshotTurn[];
+  risks?: Array<{ id: string; label: string; severity: string; count: number; turns: number[] }>;
+  notices?: Array<{ severity?: string; label?: string; text?: string }>;
+}
+
+export interface SnapshotOptions {
+  includeTools?: boolean;
+  includeToolOutput?: boolean;
+  redact?: boolean;
+  generatedAt?: string;
+  renderHtml?: (text: string) => string;
+  redactText?: (text: string) => string;
+  detectRisks?: (text: string) => Array<{ id: string; label: string; severity: string }>;
+}
+
+export function toSnapshot(session: NormalizedSession, opts?: SnapshotOptions): Snapshot;
 
 export interface DiscoveredFile {
   path: string;

@@ -5,8 +5,14 @@
 // a cumulative snapshot, so per-turn consumption is a field-wise max(0, cur-prev)
 // delta, except on context-compaction resets where the whole turn is counted.
 
-import { toNumber, toTokenCount, isRecord, safeJsonParse, flattenText, codexOutputLooksFailed } from "../util.mjs";
-import { basename } from "../util.mjs";
+import { toNumber, toTokenCount, isRecord, safeJsonParse, codexOutputLooksFailed, basename } from "../util.mjs";
+import {
+  extractCodexMessageParts,
+  extractInternalGoalObjective,
+  isBootstrapUserMessage,
+  truncateForTitle,
+  stringifyClaudeContent,
+} from "../text/parts.mjs";
 
 const DELTA_FIELDS = ["input_tokens", "cached_input_tokens", "output_tokens", "reasoning_output_tokens", "total_tokens"];
 
@@ -33,6 +39,7 @@ export function parseCodexSession(text, fileInfo = {}) {
     mtimeMs: fileInfo.mtimeMs ?? 0,
     sizeBytes: fileInfo.sizeBytes ?? 0,
     title: "",
+    goalObjective: "",
     events: [],
   };
 
@@ -92,19 +99,6 @@ export function parseCodexSession(text, fileInfo = {}) {
         }
         continue;
       }
-      // Human/assistant turns live on event_msg (response_item also echoes the
-      // prompt + injected/bootstrap messages, which would over-count turns).
-      if (ptype === "user_message") {
-        const text = flattenText(payload.message ?? payload.text ?? "");
-        session.events.push({ kind: "message", ts, role: "user", text });
-        if (!session.title && text && !isBootstrapText(text)) session.title = truncate(text, 80);
-        continue;
-      }
-      if (ptype === "agent_message") {
-        const text = flattenText(payload.message ?? payload.text ?? "");
-        session.events.push({ kind: "message", ts, role: "assistant", text });
-        continue;
-      }
       if (ptype && /compact/i.test(ptype)) {
         session.events.push({ kind: "compaction", ts });
       }
@@ -112,23 +106,42 @@ export function parseCodexSession(text, fileInfo = {}) {
     }
 
     if (type === "response_item") {
-      if (ptype === "function_call") {
+      // The conversation transcript lives on response_item messages (richer than
+      // event_msg echoes — they carry image content blocks).
+      if (ptype === "message") {
+        const role = typeof payload.role === "string" ? payload.role : "assistant";
+        const { text: msgText, images } = extractCodexMessageParts(payload);
+        const goal = extractInternalGoalObjective(msgText);
+        if (goal && !session.goalObjective) session.goalObjective = goal;
+        const internal = isBootstrapUserMessage(role, msgText);
+        session.events.push({ kind: "message", ts, role, text: msgText, images, internal });
+        if (!internal && role === "user" && !session.title && msgText) session.title = truncateForTitle(msgText);
+      } else if (ptype === "function_call") {
         session.events.push({
           kind: "tool_call",
           ts,
-          name: typeof payload.name === "string" ? payload.name : "",
-          args: typeof payload.arguments === "string" ? payload.arguments : payload.arguments ?? "",
+          name: typeof payload.name === "string" ? payload.name : "function_call",
+          args: typeof payload.arguments === "string" ? payload.arguments : "",
           callId: typeof payload.call_id === "string" ? payload.call_id : undefined,
         });
       } else if (ptype === "function_call_output") {
+        const outputText = typeof payload.output === "string" ? payload.output : stringifyClaudeContent(payload.output);
         session.events.push({
           kind: "tool_result",
           ts,
+          name: "function_output",
           callId: typeof payload.call_id === "string" ? payload.call_id : undefined,
           ok: !codexOutputLooksFailed(payload.output),
+          outputText,
         });
       } else if (ptype === "web_search_call") {
-        session.events.push({ kind: "web_search", ts });
+        const action = isRecord(payload.action) ? payload.action : {};
+        const query =
+          typeof action.query === "string" ? action.query
+            : typeof action.url === "string" ? action.url
+              : typeof payload.status === "string" ? payload.status
+                : "completed";
+        session.events.push({ kind: "web_search", ts, query });
       } else if (ptype === "reasoning") {
         session.events.push({ kind: "reasoning", ts });
       }
@@ -150,17 +163,6 @@ function normalizeCodexUsage(raw) {
   const cachedRaw = toTokenCount(raw.cached_input_tokens);
   const cached = input > 0 ? Math.min(input, cachedRaw) : cachedRaw;
   return { input, cached, output, reasoning };
-}
-
-function truncate(s, n) {
-  return s.length > n ? `${s.slice(0, n - 1)}…` : s;
-}
-
-// The first Codex user turn is usually the injected AGENTS.md / instructions
-// bootstrap, not a real prompt — skip it when picking a title.
-function isBootstrapText(text) {
-  const head = text.slice(0, 200);
-  return /^#?\s*AGENTS\.md|<INSTRUCTIONS>|^#\s*全局指令|<user_instructions>/i.test(head);
 }
 
 function sessionIdFromPath(filePath) {
