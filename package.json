@@ -1,0 +1,40 @@
+{
+  "name": "agent-session-core",
+  "version": "0.0.0",
+  "description": "Unified parser for ~/.codex and ~/.claude coding-session logs. One parse, many projections (token events, metrics, transcript).",
+  "type": "module",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18"
+  },
+  "main": "./src/index.mjs",
+  "types": "./index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "import": "./src/index.mjs"
+    }
+  },
+  "bin": {
+    "agent-sessions": "./bin/agent-sessions.mjs"
+  },
+  "files": [
+    "src",
+    "bin",
+    "index.d.ts",
+    "DESIGN.md",
+    "README.md"
+  ],
+  "scripts": {
+    "test": "node --test",
+    "parity": "node scripts/parity-codex.mjs"
+  },
+  "keywords": [
+    "codex",
+    "claude-code",
+    "session",
+    "token-usage",
+    "parser",
+    "observability"
+  ]
+}
