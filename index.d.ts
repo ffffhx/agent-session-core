@@ -123,6 +123,13 @@ export interface DiscoverOptions {
   maxDepth?: number;
   maxFiles?: number;
   skipDirs?: Set<string>;
+  /**
+   * Include per-subagent transcripts (`.../subagents/workflows/**\/agent-*.jsonl`).
+   * These are real, separately-billed token spend but not top-level user sessions,
+   * so they are excluded by default. Token-accounting consumers opt in to count them;
+   * `journal.jsonl` is always excluded. Default: false.
+   */
+  includeSubagentTranscripts?: boolean;
   now?: number;
 }
 

@@ -45,8 +45,19 @@ export function discoverSessionFiles(options = {}) {
     maxDepth = 8,
     maxFiles = Infinity,
     skipDirs = DEFAULT_SKIP_DIRS,
+    // Include per-subagent transcripts (~/.claude/.../subagents/workflows/**/agent-*.jsonl).
+    // These are real, separately-billed token spend, but they are NOT top-level user
+    // sessions — so they are excluded by default (snapshot viewers / status bars don't
+    // want them). Token-accounting consumers (token boards) opt in to count the spend.
+    // journal.jsonl (workflow orchestration log) is never a session and stays excluded.
+    includeSubagentTranscripts = false,
     now = Date.now(),
   } = options;
+
+  // When opting in, descend into the dirs that hold subagent transcripts.
+  const effectiveSkipDirs = includeSubagentTranscripts
+    ? new Set([...skipDirs].filter((d) => d !== "subagents" && d !== "workflows"))
+    : skipDirs;
 
   const cutoff = sinceMs == null ? null : now - sinceMs;
   const seenReal = new Set();
@@ -72,13 +83,15 @@ export function discoverSessionFiles(options = {}) {
     for (const entry of entries) {
       const full = join(dir, entry.name);
       if (entry.isDirectory()) {
-        if (skipDirs.has(entry.name)) continue;
+        if (effectiveSkipDirs.has(entry.name)) continue;
         walk(full, engine, depth + 1);
         continue;
       }
       if (!entry.isFile() || !entry.name.endsWith(".jsonl")) continue;
-      // Claude per-agent transcripts / journals are not user sessions.
-      if (engine === "claude" && (/^agent-.*\.jsonl$/.test(entry.name) || entry.name === "journal.jsonl")) continue;
+      // journal.jsonl is the workflow orchestration log, never a session.
+      if (engine === "claude" && entry.name === "journal.jsonl") continue;
+      // agent-*.jsonl are per-subagent transcripts: excluded unless opted in.
+      if (engine === "claude" && !includeSubagentTranscripts && /^agent-.*\.jsonl$/.test(entry.name)) continue;
 
       let st;
       try {
