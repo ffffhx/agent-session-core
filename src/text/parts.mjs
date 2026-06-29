@@ -206,6 +206,22 @@ export function extractClaudeMessageParts(message) {
   return { text: trimLongText(parts.join("\n\n").trim()), images, toolCalls, toolResults };
 }
 
+// Claude injects non-user-authored "user" rows (slash-command caveat/meta lines,
+// command-name/stdout echoes, system reminders) and sidechain/subagent prompts.
+// These must not become the session title — mirror Codex's isBootstrapUserMessage
+// guard. Keep the prefix list loose and centralized here so new markers are easy
+// to add. `row` carries the structural flags (isMeta/isSidechain are on the row,
+// NOT the message).
+const CLAUDE_INJECTED_PREFIX =
+  /^(<command-name>|<command-message>|<command-args>|<local-command-(caveat|stdout|stderr)>|<system-reminder>|<bash-(input|stdout|stderr)>)/i;
+const CLAUDE_CAVEAT = /^(<local-command-caveat>)?\s*Caveat: The messages below were generated/i;
+
+export function isClaudeInjectedUserMessage(text, row) {
+  const t = String(text || "").trim();
+  const meta = Boolean(row && (row.isMeta === true || row.isSidechain === true));
+  return meta || CLAUDE_INJECTED_PREFIX.test(t) || CLAUDE_CAVEAT.test(t);
+}
+
 export function normalizeClaudeTimestamp(value) {
   if (!value) return "";
   if (typeof value === "number") return new Date(value).toISOString();

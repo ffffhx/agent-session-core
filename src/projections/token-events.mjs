@@ -23,7 +23,7 @@ export function toTokenEvents(session, ctx = {}) {
   for (const ev of session.events) {
     if (ev.kind !== "token_usage") continue;
     seq += 1;
-    const { input, cached, output, reasoning } = ev.usage;
+    const { input, cached, cacheCreation = 0, output, reasoning } = ev.usage;
     const totalTokens = input + output;
     if (totalTokens <= 0) continue;
     out.push({
@@ -38,10 +38,11 @@ export function toTokenEvents(session, ctx = {}) {
       timestamp: ev.ts || session.endedAt || session.startedAt || "",
       inputTokens: input,
       cachedInputTokens: cached,
+      cacheCreationInputTokens: cacheCreation,
       outputTokens: output,
       reasoningOutputTokens: reasoning,
       totalTokens,
-      costUsd: estimateCostUsd({ model, inputTokens: input, cachedInputTokens: cached, outputTokens: output }, pricing),
+      costUsd: estimateCostUsd({ model, inputTokens: input, cachedInputTokens: cached, cacheCreationTokens: cacheCreation, outputTokens: output }, pricing),
       sessionId: session.id,
       sessionTitle: session.title || undefined,
     });
@@ -55,6 +56,7 @@ export function sessionTokenTotals(session, ctx = {}) {
   const totals = {
     inputTokens: 0,
     cachedInputTokens: 0,
+    cacheCreationInputTokens: 0,
     outputTokens: 0,
     reasoningOutputTokens: 0,
     totalTokens: 0,
@@ -64,6 +66,7 @@ export function sessionTokenTotals(session, ctx = {}) {
   for (const e of events) {
     totals.inputTokens += e.inputTokens;
     totals.cachedInputTokens += e.cachedInputTokens;
+    totals.cacheCreationInputTokens += e.cacheCreationInputTokens;
     totals.outputTokens += e.outputTokens;
     totals.reasoningOutputTokens += e.reasoningOutputTokens;
     totals.totalTokens += e.totalTokens;

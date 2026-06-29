@@ -34,7 +34,7 @@ export function toSnapshot(session, opts = {}) {
   let turnNumber = 0;
   let truncated = false;
 
-  let inTok = 0, cachedTok = 0, outTok = 0, reasoningTok = 0, tokenUpdatedAt = "";
+  let inTok = 0, cachedTok = 0, cacheCreationTok = 0, outTok = 0, reasoningTok = 0, tokenUpdatedAt = "";
 
   for (const ev of session.events) {
     if (turns.length >= MAX_TURNS) {
@@ -43,7 +43,7 @@ export function toSnapshot(session, opts = {}) {
     }
     switch (ev.kind) {
       case "token_usage":
-        inTok += ev.usage.input; cachedTok += ev.usage.cached; outTok += ev.usage.output; reasoningTok += ev.usage.reasoning;
+        inTok += ev.usage.input; cachedTok += ev.usage.cached; cacheCreationTok += ev.usage.cacheCreation || 0; outTok += ev.usage.output; reasoningTok += ev.usage.reasoning;
         if (ev.ts) tokenUpdatedAt = ev.ts;
         break;
       case "message": {
@@ -125,6 +125,7 @@ export function toSnapshot(session, opts = {}) {
       ? {
           inputTokens: inTok,
           cachedInputTokens: cachedTok,
+          cacheCreationInputTokens: cacheCreationTok,
           outputTokens: outTok,
           reasoningOutputTokens: reasoningTok,
           totalTokens: inTok + outTok,

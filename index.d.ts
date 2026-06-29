@@ -7,6 +7,8 @@ export type NormalizedTokenUsage = {
   input: number;
   /** Discounted cached-read subset of input. */
   cached: number;
+  /** Cache-write (cache_creation) subset of input; billed at the cacheWrite rate (codex: 0). */
+  cacheCreation: number;
   output: number;
   /** Reasoning output tokens (codex only; claude API does not separate them → 0). */
   reasoning: number;
@@ -83,6 +85,7 @@ export interface Snapshot {
   tokenUsage?: {
     inputTokens?: number;
     cachedInputTokens?: number;
+    cacheCreationInputTokens?: number;
     outputTokens?: number;
     reasoningOutputTokens?: number;
     totalTokens?: number;
@@ -127,6 +130,8 @@ export interface PricingEntry {
   match: RegExp;
   input: number;
   cachedInput: number;
+  /** $/MTok for cache_creation (cache-write); defaults to input*1.25 when absent. */
+  cacheWrite?: number;
   output: number;
 }
 
@@ -153,6 +158,7 @@ export interface TokenUsageEvent {
   timestamp: string;
   inputTokens: number;
   cachedInputTokens: number;
+  cacheCreationInputTokens?: number;
   outputTokens: number;
   reasoningOutputTokens: number;
   totalTokens: number;
@@ -164,6 +170,7 @@ export interface TokenUsageEvent {
 export interface SessionTokenTotals {
   inputTokens: number;
   cachedInputTokens: number;
+  cacheCreationInputTokens?: number;
   outputTokens: number;
   reasoningOutputTokens: number;
   totalTokens: number;
@@ -184,4 +191,4 @@ export function sessionTokenTotals(session: NormalizedSession, ctx?: TokenEventC
 export function loadSessions(options?: DiscoverOptions): NormalizedSession[];
 export const DEFAULT_MODEL_PRICING: PricingEntry[];
 export function resolvePricing(override?: string | unknown[]): PricingEntry[];
-export function estimateCostUsd(args: { model: string; inputTokens: number; cachedInputTokens: number; outputTokens: number }, pricing?: PricingEntry[]): number;
+export function estimateCostUsd(args: { model: string; inputTokens: number; cachedInputTokens: number; cacheCreationTokens?: number; outputTokens: number }, pricing?: PricingEntry[]): number;

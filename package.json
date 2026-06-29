@@ -27,7 +27,9 @@
   ],
   "scripts": {
     "test": "node --test",
-    "parity": "node scripts/parity-codex.mjs"
+    "parity": "node scripts/parity-codex.mjs && node scripts/parity-claude.mjs",
+    "parity:codex": "node scripts/parity-codex.mjs",
+    "parity:claude": "node scripts/parity-claude.mjs"
   },
   "keywords": [
     "codex",

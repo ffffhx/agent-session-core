@@ -37,6 +37,10 @@ export function discoverSessionFiles(options = {}) {
     roots = defaultRoots(),
     sinceMs = null,        // only files modified within the last N ms (null = no window)
     minBytes = 0,
+    // Admission filter only. The real hard cap is PARSE_MAX_BYTES in read-lines.mjs
+    // (< V8's MAX_STRING_LENGTH): the parser streams + truncates, so an admitted huge
+    // file is bounded there rather than slurped whole. Files past PARSE_MAX_BYTES are
+    // parsed as a truncated prefix (session.truncated = true), not OOM'd or dropped.
     maxBytes = 512 * 1024 * 1024,
     maxDepth = 8,
     maxFiles = Infinity,

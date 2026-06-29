@@ -1,14 +1,17 @@
 // Claude Code engine: ~/.claude/projects/<slug>/<uuid>.jsonl -> NormalizedSession.
 //
-// Unlike Codex, Claude reports usage per assistant message (already incremental),
-// so no cumulative-delta is needed — each assistant row's usage is one token event.
+// A single assistant message is split across multiple content-block rows (thinking
+// / text / tool_use) that share one (message.id, requestId); every such row repeats
+// the message's FINAL usage (not an increment). So usage is reported once per
+// message — token_usage is deduped on that composite key (first-seen wins) to avoid
+// counting one message N times. message/tool_call events are still emitted per row.
 // input = input_tokens + cache_read + cache_creation (full input); cached = cache_read.
 
 import { toTokenCount, isRecord, safeJsonParse, basename } from "../util.mjs";
-import { extractClaudeMessageParts, stringifyClaudeContent, truncateForTitle } from "../text/parts.mjs";
+import { extractClaudeMessageParts, stringifyClaudeContent, truncateForTitle, isClaudeInjectedUserMessage } from "../text/parts.mjs";
 
-/** @param {string} text @param {{filePath:string,mtimeMs?:number,sizeBytes?:number}} fileInfo */
-export function parseClaudeSession(text, fileInfo = {}) {
+/** @param {string|Iterable<string>} input @param {{filePath:string,mtimeMs?:number,sizeBytes?:number}} fileInfo */
+export function parseClaudeSession(input, fileInfo = {}) {
   const session = {
     engine: "claude",
     id: "",
@@ -29,8 +32,10 @@ export function parseClaudeSession(text, fileInfo = {}) {
   let aiTitle = "";
   let lastPrompt = "";
   let firstUser = "";
+  // First-seen-wins dedup for token_usage across an assistant message's blocks.
+  const seenUsageKeys = new Set();
 
-  for (const rawLine of text.split(/\r?\n/)) {
+  for (const rawLine of asLines(input)) {
     const line = rawLine.trim();
     if (!line) continue;
     const row = safeJsonParse(line);
@@ -83,7 +88,7 @@ export function parseClaudeSession(text, fileInfo = {}) {
           isSidechain: row.isSidechain === true,
           isMeta: row.isMeta === true,
         });
-        if (!firstUser && msgText) firstUser = msgText;
+        if (!firstUser && msgText && !isClaudeInjectedUserMessage(msgText, row)) firstUser = msgText;
       }
       continue;
     }
@@ -105,7 +110,15 @@ export function parseClaudeSession(text, fileInfo = {}) {
       }
       const usage = claudeUsage(message.usage);
       if (usage && usage.input + usage.output > 0) {
-        session.events.push({ kind: "token_usage", ts, usage });
+        // Dedup on (message.id, requestId): the message's blocks each repeat the
+        // same final usage. Missing message.id (rare) falls back to per-row count.
+        const msgId = typeof message.id === "string" ? message.id : "";
+        const reqId = typeof row.requestId === "string" ? row.requestId : "";
+        const usageKey = msgId ? `${msgId}:${reqId}` : "";
+        if (!usageKey || !seenUsageKeys.has(usageKey)) {
+          if (usageKey) seenUsageKeys.add(usageKey);
+          session.events.push({ kind: "token_usage", ts, usage });
+        }
       }
       continue;
     }
@@ -116,6 +129,13 @@ export function parseClaudeSession(text, fileInfo = {}) {
   return session;
 }
 
+// Accept either a whole-file string (test fixtures / direct callers) or a line
+// iterable (the streaming reader). The string path stays byte-identical to before;
+// the per-line .trim() above absorbs any \r the reader leaves on.
+function asLines(input) {
+  return typeof input === "string" ? input.split(/\r?\n/) : input;
+}
+
 function claudeUsage(usage) {
   if (!isRecord(usage)) return null;
   const base = toTokenCount(usage.input_tokens);
@@ -124,7 +144,9 @@ function claudeUsage(usage) {
   const input = base + cacheRead + cacheCreation;
   const cached = input > 0 ? Math.min(input, cacheRead) : cacheRead;
   const output = toTokenCount(usage.output_tokens);
-  return { input, cached, output, reasoning: 0 };
+  // cacheCreation kept as its own bucket so estimateCostUsd can bill it at the
+  // 1.25x write rate; input/cached are unchanged so totals/display don't drift.
+  return { input, cached, cacheCreation, output, reasoning: 0 };
 }
 
 function sessionIdFromPath(filePath) {

@@ -19,16 +19,24 @@ export const DEFAULT_MODEL_PRICING = [
   { match: /gpt-4\.1/i, input: 2, cachedInput: 0.5, output: 8 },
   { match: /gpt-4o-mini/i, input: 0.15, cachedInput: 0.075, output: 0.6 },
   { match: /gpt-4o/i, input: 2.5, cachedInput: 1.25, output: 10 },
-  // Anthropic Claude
-  { match: /claude.*opus/i, input: 15, cachedInput: 1.5, output: 75 },
-  { match: /claude.*sonnet/i, input: 3, cachedInput: 0.3, output: 15 },
-  { match: /claude.*haiku/i, input: 0.8, cachedInput: 0.08, output: 4 },
+  // Anthropic Claude. cacheWrite (cache_creation) bills at 1.25x base (5-min TTL);
+  // cachedInput (cache_read) is ~0.1x base. Rates: claude-api skill table, 2026-06-04.
+  // Order matters — current-generation arms precede the broad legacy opus fallback,
+  // because Opus dropped from $15/$75 (3/4.0/4.1) to $5/$25 (4.5+) and a single
+  // /claude.*opus/ arm would misprice 4.5+ by 3x. Fable/Mythos and the 4.5+ Opus
+  // arms must come first (estimateCostUsd takes the FIRST matching entry).
+  { match: /claude.*fable|claude-mythos/i, input: 10, cachedInput: 1.0, cacheWrite: 12.5, output: 50 },
+  { match: /claude.*opus-4-[5-9]|claude.*opus-[5-9]/i, input: 5, cachedInput: 0.5, cacheWrite: 6.25, output: 25 },
+  { match: /claude.*opus/i, input: 15, cachedInput: 1.5, cacheWrite: 18.75, output: 75 }, // legacy: opus 3 / 4.0 / 4.1
+  { match: /claude.*sonnet/i, input: 3, cachedInput: 0.3, cacheWrite: 3.75, output: 15 },
+  { match: /claude.*haiku/i, input: 1, cachedInput: 0.1, cacheWrite: 1.25, output: 5 },
 ];
 
 /**
  * Load a pricing override from JSON (env AGENT_SESSION_PRICING or a path).
- * Entries: { match: "<regex source>", flags?: "i", input, cachedInput, output }.
- * Falls back to DEFAULT_MODEL_PRICING when absent/invalid.
+ * Entries: { match: "<regex source>", flags?: "i", input, cachedInput, cacheWrite?, output }.
+ * cacheWrite is optional ($/MTok for cache_creation); when absent it defaults to
+ * input*1.25 inside estimateCostUsd. Falls back to DEFAULT_MODEL_PRICING when absent/invalid.
  */
 export function resolvePricing(override) {
   if (!override) return DEFAULT_MODEL_PRICING;
@@ -40,6 +48,7 @@ export function resolvePricing(override) {
         match: e.match instanceof RegExp ? e.match : new RegExp(String(e.match), e.flags ?? "i"),
         input: Number(e.input) || 0,
         cachedInput: Number(e.cachedInput) || 0,
+        cacheWrite: e.cacheWrite != null ? Number(e.cacheWrite) || 0 : undefined,
         output: Number(e.output) || 0,
       }))
       .filter((e) => e.match);
@@ -50,18 +59,27 @@ export function resolvePricing(override) {
 }
 
 /**
- * Estimate cost in USD. Faithful to token-board's estimateCostUsd:
- * cachedInputTokens is a subset of inputTokens, so the full rate is charged only
- * on the uncached remainder and the discounted rate on the cached portion.
+ * Estimate cost in USD. Faithful to token-board's estimateCostUsd, with a fourth
+ * cache-WRITE bucket: both cachedInputTokens (cache_read) and cacheCreationTokens
+ * (cache_write) are subsets of inputTokens, so the full rate is charged only on the
+ * uncached/non-creation remainder, the discounted read rate on the cached portion,
+ * and the write rate (entry.cacheWrite, default input*1.25) on cache_creation.
  * Unknown model → 0 (no silent guess).
+ *
+ * INVARIANT: callers must pass inputTokens = base + cache_read + cache_creation
+ * (as claudeUsage builds it). If a future refactor makes inputTokens the uncached
+ * remainder, drop the two subtractions below in lockstep or cost undercounts.
  */
-export function estimateCostUsd({ model, inputTokens, cachedInputTokens, outputTokens }, pricing = DEFAULT_MODEL_PRICING) {
+export function estimateCostUsd({ model, inputTokens, cachedInputTokens, cacheCreationTokens, outputTokens }, pricing = DEFAULT_MODEL_PRICING) {
   const entry = pricing.find((item) => item.match.test(model || ""));
   if (!entry) return 0;
-  const billableInput = Math.max(0, (inputTokens || 0) - (cachedInputTokens || 0));
+  const cc = cacheCreationTokens || 0;
+  const billableInput = Math.max(0, (inputTokens || 0) - (cachedInputTokens || 0) - cc);
+  const cacheWriteRate = entry.cacheWrite ?? entry.input * 1.25;
   return (
     (billableInput / 1_000_000) * entry.input +
     ((cachedInputTokens || 0) / 1_000_000) * entry.cachedInput +
+    (cc / 1_000_000) * cacheWriteRate +
     ((outputTokens || 0) / 1_000_000) * entry.output
   );
 }

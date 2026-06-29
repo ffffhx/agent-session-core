@@ -5,7 +5,8 @@
 // a cumulative snapshot, so per-turn consumption is a field-wise max(0, cur-prev)
 // delta, except on context-compaction resets where the whole turn is counted.
 
-import { toNumber, toTokenCount, isRecord, safeJsonParse, codexOutputLooksFailed, basename } from "../util.mjs";
+import { toTokenCount, isRecord, safeJsonParse, codexOutputLooksFailed, basename } from "../util.mjs";
+import { resetAwareDelta } from "./codex-tokens.mjs";
 import {
   extractCodexMessageParts,
   extractInternalGoalObjective,
@@ -14,18 +15,8 @@ import {
   stringifyClaudeContent,
 } from "../text/parts.mjs";
 
-const DELTA_FIELDS = ["input_tokens", "cached_input_tokens", "output_tokens", "reasoning_output_tokens", "total_tokens"];
-
-function tokenUsageDelta(current, previous) {
-  const out = {};
-  for (const field of DELTA_FIELDS) {
-    out[field] = Math.max(0, toNumber(current[field]) - toNumber(previous[field]));
-  }
-  return out;
-}
-
-/** @param {string} text @param {{filePath:string,mtimeMs?:number,sizeBytes?:number}} fileInfo */
-export function parseCodexSession(text, fileInfo = {}) {
+/** @param {string|Iterable<string>} input @param {{filePath:string,mtimeMs?:number,sizeBytes?:number}} fileInfo */
+export function parseCodexSession(input, fileInfo = {}) {
   const session = {
     engine: "codex",
     id: "",
@@ -46,7 +37,7 @@ export function parseCodexSession(text, fileInfo = {}) {
   let currentModel = "";
   let previousTotalUsage = {};
 
-  for (const rawLine of text.split(/\r?\n/)) {
+  for (const rawLine of asLines(input)) {
     const line = rawLine.trim();
     if (!line) continue;
     const row = safeJsonParse(line);
@@ -83,10 +74,9 @@ export function parseCodexSession(text, fileInfo = {}) {
         const totalUsage = isRecord(info.total_token_usage) ? info.total_token_usage : undefined;
         let raw;
         if (totalUsage) {
-          // Reset-aware: compaction shrinks the running total; a plain delta would
-          // zero (drop) the post-compaction turn — count the whole turn instead.
-          const isReset = toNumber(totalUsage.total_tokens) < toNumber(previousTotalUsage.total_tokens);
-          raw = isReset ? totalUsage : tokenUsageDelta(totalUsage, previousTotalUsage);
+          // Reset-aware delta lives in codex-tokens.mjs (single source of truth; see
+          // there for the compaction-window reasoning and the robust total handling).
+          raw = resetAwareDelta(totalUsage, previousTotalUsage);
           previousTotalUsage = totalUsage;
         } else if (isRecord(info.last_token_usage)) {
           raw = info.last_token_usage;
@@ -154,6 +144,14 @@ export function parseCodexSession(text, fileInfo = {}) {
   return session;
 }
 
+// Accept either a whole-file string (test fixtures / direct callers) or a line
+// iterable (the streaming reader). Splitting on /\r?\n/ here keeps the string path
+// byte-identical to the old behaviour; the per-line .trim() above handles any \r the
+// reader leaves on, so both inputs yield the same sequence of non-empty lines.
+function asLines(input) {
+  return typeof input === "string" ? input.split(/\r?\n/) : input;
+}
+
 /** Map a raw Codex usage record (or its delta) to the unified token shape. */
 function normalizeCodexUsage(raw) {
   const input = toTokenCount(raw.input_tokens);
@@ -162,7 +160,8 @@ function normalizeCodexUsage(raw) {
   // cachedInputTokens is a subset of inputTokens (token-board clamps the same way).
   const cachedRaw = toTokenCount(raw.cached_input_tokens);
   const cached = input > 0 ? Math.min(input, cachedRaw) : cachedRaw;
-  return { input, cached, output, reasoning };
+  // Codex has no cache-write concept; keep the field for a uniform usage shape.
+  return { input, cached, cacheCreation: 0, output, reasoning };
 }
 
 function sessionIdFromPath(filePath) {
