@@ -104,6 +104,8 @@ export interface SnapshotOptions {
   renderHtml?: (text: string) => string;
   redactText?: (text: string) => string;
   detectRisks?: (text: string) => Array<{ id: string; label: string; severity: string }>;
+  /** Accrued once per image in an image-bearing message (mirrors addImageRisk). */
+  imageRiskFinding?: { id: string; label: string; severity: string };
 }
 
 export function toSnapshot(session: NormalizedSession, opts?: SnapshotOptions): Snapshot;

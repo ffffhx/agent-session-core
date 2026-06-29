@@ -28,6 +28,12 @@ export function toSnapshot(session, opts = {}) {
   const renderHtml = typeof opts.renderHtml === "function" ? opts.renderHtml : null;
   const redactText = redact && typeof opts.redactText === "function" ? opts.redactText : (t) => t;
   const detectRisks = typeof opts.detectRisks === "function" ? opts.detectRisks : null;
+  // Optional risk finding accrued once per image in an image-bearing message
+  // (caller-defined id/label/severity). Lets redaction consumers flag attachments
+  // the text scanner can't see — mirrors local-history's addImageRisk.
+  const imageRiskFinding = opts.imageRiskFinding && typeof opts.imageRiskFinding === "object" && opts.imageRiskFinding.id
+    ? opts.imageRiskFinding
+    : null;
 
   const turns = [];
   const riskMap = new Map();
@@ -54,6 +60,9 @@ export function toSnapshot(session, opts = {}) {
         if (!rawText.trim() && !images.length) break;
         turnNumber += 1;
         if (detectRisks) accumulateRisks(riskMap, detectRisks(rawText), turnNumber);
+        if (imageRiskFinding && images.length) {
+          for (let i = 0; i < images.length; i++) accumulateRisks(riskMap, [imageRiskFinding], turnNumber);
+        }
         const text = redactText(rawText);
         turns.push({
           kind: "message",
@@ -66,41 +75,34 @@ export function toSnapshot(session, opts = {}) {
         });
         break;
       }
-      case "tool_call":
+      case "tool_call": {
         if (!includeTools) break;
-        turns.push({
-          kind: "tool",
-          role: "tool",
-          name: ev.name,
-          turn: turnNumber || 1,
-          text: `Tool call: ${ev.name || "unknown"}\n${trimLongText(stringifyArgs(ev.args), TOOL_OUTPUT_PREVIEW_CHARS)}`,
-          timestamp: ev.ts,
-        });
+        // Scan the SAME rendered text we display (trimmed; pre-redact), then redact
+        // for display — mirrors local-history renderToolText + addRisks(rawText)
+        // gated by includeTools. Tool-call args are shown regardless of includeToolOutput.
+        const raw = `Tool call: ${ev.name || "unknown"}\n${trimLongText(stringifyArgs(ev.args), TOOL_OUTPUT_PREVIEW_CHARS)}`;
+        if (detectRisks) accumulateRisks(riskMap, detectRisks(raw), turnNumber || 1);
+        turns.push({ kind: "tool", role: "tool", name: ev.name, turn: turnNumber || 1, text: redactText(raw), timestamp: ev.ts });
         break;
-      case "tool_result":
+      }
+      case "tool_result": {
         if (!includeTools) break;
-        turns.push({
-          kind: "tool",
-          role: "tool",
-          name: ev.name || "function_output",
-          turn: turnNumber || 1,
-          text: includeToolOutput
-            ? trimLongText(ev.outputText || "", TOOL_OUTPUT_PREVIEW_CHARS)
-            : "Tool output hidden. Re-run with output enabled to include it.",
-          timestamp: ev.ts,
-        });
+        // Output text is gated by includeToolOutput; when hidden, the placeholder
+        // carries no risk — matching local-history (it scans the hidden placeholder).
+        const raw = includeToolOutput
+          ? trimLongText(ev.outputText || "", TOOL_OUTPUT_PREVIEW_CHARS)
+          : "Tool output hidden. Re-run with output enabled to include it.";
+        if (detectRisks) accumulateRisks(riskMap, detectRisks(raw), turnNumber || 1);
+        turns.push({ kind: "tool", role: "tool", name: ev.name || "function_output", turn: turnNumber || 1, text: redactText(raw), timestamp: ev.ts });
         break;
-      case "web_search":
+      }
+      case "web_search": {
         if (!includeTools) break;
-        turns.push({
-          kind: "tool",
-          role: "tool",
-          name: "web_search",
-          turn: turnNumber || 1,
-          text: `Web search: ${ev.query || "completed"}`,
-          timestamp: ev.ts,
-        });
+        const raw = `Web search: ${ev.query || "completed"}`;
+        if (detectRisks) accumulateRisks(riskMap, detectRisks(raw), turnNumber || 1);
+        turns.push({ kind: "tool", role: "tool", name: "web_search", turn: turnNumber || 1, text: redactText(raw), timestamp: ev.ts });
         break;
+      }
     }
   }
 
