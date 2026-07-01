@@ -1,6 +1,6 @@
 {
   "name": "agent-session-core",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Unified parser for ~/.codex and ~/.claude coding-session logs. One parse, many projections (token events, metrics, transcript).",
   "type": "module",
   "license": "MIT",
