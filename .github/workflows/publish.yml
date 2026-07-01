@@ -5,6 +5,13 @@ on:
   push:
     tags:
       - "v*"
+  # 手动触发：默认 dry-run，仅演练不真正发布，用于验证 CI 链路
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "只演练不发布 (dry-run)"
+        type: boolean
+        default: true
 
 jobs:
   publish:
@@ -23,6 +30,7 @@ jobs:
         run: npm test
 
       - name: Verify tag matches package.json version
+        if: startsWith(github.ref, 'refs/tags/')
         run: |
           TAG="${GITHUB_REF_NAME#v}"
           PKG="$(node -p "require('./package.json').version")"
@@ -32,6 +40,11 @@ jobs:
           fi
 
       - name: Publish
-        run: npm publish --access public
+        run: |
+          if [ "${{ github.event.inputs.dry_run }}" = "true" ]; then
+            npm publish --access public --dry-run
+          else
+            npm publish --access public
+          fi
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
