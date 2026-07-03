@@ -267,6 +267,33 @@ test("cost: per-model Claude rates match the published table; legacy vs current 
   assert.ok(out1m("claude-fable-5") > 0);
 });
 
+test("claude: mid-session model switch attributes each usage event to its own model", () => {
+  // Session starts on fable-5, then /model (or fast mode / subagent override)
+  // switches to opus-4-8 — the bulk of the spend must NOT inherit fable-5.
+  const text = [
+    `{"type":"assistant","requestId":"req_1","timestamp":"2026-06-02T00:00:01Z","message":{"id":"msg_A","role":"assistant","model":"claude-fable-5","content":[{"type":"text","text":"a"}],"usage":{"input_tokens":100,"output_tokens":10}}}`,
+    `{"type":"assistant","requestId":"req_2","timestamp":"2026-06-02T00:00:02Z","message":{"id":"msg_B","role":"assistant","model":"claude-opus-4-8","content":[{"type":"text","text":"b"}],"usage":{"input_tokens":2000,"output_tokens":200}}}`,
+  ].join("\n");
+  const s = parseClaudeSession(text, { filePath: "/x/abc.jsonl" });
+  assert.equal(s.model, "claude-fable-5"); // session-level metadata stays first-seen
+  const events = toTokenEvents(s);
+  assert.deepEqual(events.map((e) => e.model), ["claude-fable-5", "claude-opus-4-8"]);
+  // Cost follows the per-event model: opus ($5/$25) for the second event, not fable ($10/$50).
+  assert.ok(Math.abs(events[1].costUsd - (2000 / 1e6 * 5 + 200 / 1e6 * 25)) < 1e-12);
+});
+
+test("codex: turn_context model switch attributes each usage event to its own model", () => {
+  const text = [
+    `{"timestamp":"2026-06-01T00:00:00Z","type":"session_meta","payload":{"id":"sess-1","cwd":"/home/u/proj","model":"gpt-5.5"}}`,
+    `{"timestamp":"2026-06-01T00:00:02Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":100,"output_tokens":20,"total_tokens":120}}}}`,
+    `{"timestamp":"2026-06-01T00:00:03Z","type":"turn_context","payload":{"model":"gpt-5.4"}}`,
+    `{"timestamp":"2026-06-01T00:00:04Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":250,"output_tokens":60,"total_tokens":310}}}}`,
+  ].join("\n");
+  const s = parseCodexSession(text, { filePath: "/x/sess-1.jsonl" });
+  const events = toTokenEvents(s);
+  assert.deepEqual(events.map((e) => e.model), ["gpt-5.5", "gpt-5.4"]);
+});
+
 test("token event ctx: source/tool default per engine, cost attached", () => {
   const text = `{"type":"assistant","timestamp":"2026-06-02T00:00:01Z","message":{"role":"assistant","model":"gpt-5.5","content":[{"type":"text","text":"x"}],"usage":{"input_tokens":1000,"output_tokens":1000}}}`;
   const s = parseClaudeSession(text, { filePath: "/x/abc.jsonl" });

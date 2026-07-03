@@ -27,7 +27,7 @@ export type NormalizedEvent =
   | { kind: "message"; ts: string; role: "user" | "assistant" | "system"; text: string; images?: NormalizedImage[]; internal?: boolean; isSidechain?: boolean; isMeta?: boolean }
   | { kind: "tool_call"; ts: string; name: string; args: unknown; callId?: string }
   | { kind: "tool_result"; ts: string; name?: string; callId?: string; ok: boolean; outputText?: string }
-  | { kind: "token_usage"; ts: string; usage: NormalizedTokenUsage }
+  | { kind: "token_usage"; ts: string; usage: NormalizedTokenUsage; model?: string }
   | { kind: "compaction"; ts: string }
   | { kind: "web_search"; ts: string; query?: string }
   | { kind: "reasoning"; ts: string };

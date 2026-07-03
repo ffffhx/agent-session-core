@@ -22,8 +22,21 @@ export function expandHome(p) {
 
 /** Default roots, per engine. Override via options.roots. */
 export function defaultRoots() {
+  // Codex sessions can live under more than one home on the same machine:
+  //  - ~/.codex (plain CLI default)
+  //  - $CODEX_HOME (the CLI honours it; e.g. Orca points it at its runtime home,
+  //    after which NEW sessions stop appearing under ~/.codex entirely)
+  //  - the Orca app's runtime home, for processes (launchd agents, cron) that
+  //    don't inherit the interactive shell's $CODEX_HOME.
+  // Overlapping copies between these roots are hardlinks; discovery dedups them
+  // by (dev, inode), so listing all roots never double-counts a session.
+  const codex = ["~/.codex/sessions", "~/.codex/archived_sessions"];
+  const codexHome = process.env.CODEX_HOME;
+  if (codexHome) codex.push(join(codexHome, "sessions"), join(codexHome, "archived_sessions"));
+  const orcaHome = "~/Library/Application Support/orca/codex-runtime-home/home";
+  codex.push(`${orcaHome}/sessions`, `${orcaHome}/archived_sessions`);
   return {
-    codex: ["~/.codex/sessions", "~/.codex/archived_sessions"],
+    codex,
     claude: ["~/.claude/projects"],
   };
 }
@@ -104,11 +117,18 @@ export function discoverSessionFiles(options = {}) {
       if (cutoff != null && mtimeMs < cutoff) continue;
       if (sizeBytes < minBytes || sizeBytes > maxBytes) continue;
 
+      // Dedup by (dev, inode): catches the same file reached via different roots
+      // whether the alias is a symlink OR a hardlink (Orca hardlink-mirrors
+      // ~/.codex sessions into its runtime home — realpath can't see that).
       let real;
-      try {
-        real = realpathSync(full);
-      } catch {
-        real = full;
+      if (st.ino > 0) {
+        real = `${st.dev}:${st.ino}`;
+      } else {
+        try {
+          real = realpathSync(full);
+        } catch {
+          real = full;
+        }
       }
       if (seenReal.has(real)) continue;
       seenReal.add(real);

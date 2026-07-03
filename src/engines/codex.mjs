@@ -84,7 +84,9 @@ export function parseCodexSession(input, fileInfo = {}) {
         if (raw) {
           const usage = normalizeCodexUsage(raw);
           if (usage.input + usage.output > 0) {
-            session.events.push({ kind: "token_usage", ts, usage });
+            // turn_context updates currentModel per turn, so tag each usage
+            // event with the model that actually served it.
+            session.events.push({ kind: "token_usage", ts, usage, model: currentModel || undefined });
           }
         }
         continue;

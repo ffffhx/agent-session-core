@@ -94,7 +94,8 @@ export function parseClaudeSession(input, fileInfo = {}) {
     }
 
     if (type === "assistant" && message) {
-      if (typeof message.model === "string" && message.model && !session.model) session.model = message.model;
+      const messageModel = typeof message.model === "string" ? message.model : "";
+      if (messageModel && !session.model) session.model = messageModel;
       const { text: msgText, images, toolCalls } = extractClaudeMessageParts(message);
       if (msgText || images.length) {
         session.events.push({ kind: "message", ts, role: "assistant", text: msgText, images });
@@ -117,7 +118,9 @@ export function parseClaudeSession(input, fileInfo = {}) {
         const usageKey = msgId ? `${msgId}:${reqId}` : "";
         if (!usageKey || !seenUsageKeys.has(usageKey)) {
           if (usageKey) seenUsageKeys.add(usageKey);
-          session.events.push({ kind: "token_usage", ts, usage });
+          // Sessions can switch models mid-way (/model, fast mode, subagent
+          // overrides), so each usage event carries its own message's model.
+          session.events.push({ kind: "token_usage", ts, usage, model: messageModel || undefined });
         }
       }
       continue;

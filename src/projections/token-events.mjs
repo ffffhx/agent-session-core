@@ -15,7 +15,7 @@ export function toTokenEvents(session, ctx = {}) {
   const source = ctx.source || (session.engine === "claude" ? "claude-code" : "codex");
   const tool = ctx.tool || (session.engine === "claude" ? "Claude Code" : "Codex CLI");
   const project = ctx.project || basename(session.cwd) || "";
-  const model = session.model || ctx.model || "unknown";
+  const sessionModel = session.model || ctx.model || "unknown";
   const userId = ctx.userId || "local";
 
   const out = [];
@@ -26,6 +26,9 @@ export function toTokenEvents(session, ctx = {}) {
     const { input, cached, cacheCreation = 0, output, reasoning } = ev.usage;
     const totalTokens = input + output;
     if (totalTokens <= 0) continue;
+    // Prefer the event's own model: sessions can switch models mid-way, and
+    // both attribution and pricing must follow the model that served the call.
+    const model = ev.model || sessionModel;
     out.push({
       id: `asc:${session.engine}:${session.id}:${seq}`,
       userId,
