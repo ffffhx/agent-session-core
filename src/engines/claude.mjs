@@ -26,6 +26,8 @@ export function parseClaudeSession(input, fileInfo = {}) {
     sizeBytes: fileInfo.sizeBytes ?? 0,
     title: "",
     goalObjective: "",
+    modelProvider: "",
+    source: "",
     events: [],
   };
 

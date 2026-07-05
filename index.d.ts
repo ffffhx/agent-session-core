@@ -46,6 +46,10 @@ export interface NormalizedSession {
   sizeBytes: number;
   title: string;
   goalObjective: string;
+  /** Model provider from the session header (codex session_meta.model_provider). */
+  modelProvider: string;
+  /** Launching app: codex originator (e.g. "Codex Desktop") or source (e.g. "vscode"). */
+  source: string;
   events: NormalizedEvent[];
 }
 

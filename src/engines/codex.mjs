@@ -32,6 +32,8 @@ export function parseCodexSession(input, fileInfo = {}) {
     sizeBytes: fileInfo.sizeBytes ?? 0,
     title: "",
     goalObjective: "",
+    modelProvider: "",
+    source: "",
     events: [],
   };
 
@@ -60,6 +62,12 @@ export function parseCodexSession(input, fileInfo = {}) {
       if (typeof payload.cli_version === "string") session.version = payload.cli_version;
       if (typeof payload.git_branch === "string") session.gitBranch = payload.git_branch;
       if (typeof payload.model === "string" && payload.model) currentModel = payload.model;
+      if (typeof payload.model_provider === "string" && payload.model_provider) session.modelProvider = payload.model_provider;
+      // The launching app: originator (e.g. "Codex Desktop") first, then source
+      // (e.g. "vscode") — mirrors the legacy summary's `originator || source`.
+      const originator = typeof payload.originator === "string" ? payload.originator : "";
+      const src = typeof payload.source === "string" ? payload.source : "";
+      if (!session.source && (originator || src)) session.source = originator || src;
       continue;
     }
 
