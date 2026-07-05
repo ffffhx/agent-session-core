@@ -81,6 +81,7 @@ export function parseClaudeSession(input, fileInfo = {}) {
         session.events.push({ kind: "tool_result", ts, name: tr.toolUseId, callId: tr.toolUseId, ok: !tr.isError, outputText: tr.text });
       }
       if (msgText || images.length) {
+        const injected = isClaudeInjectedUserMessage(msgText, row);
         session.events.push({
           kind: "message",
           ts,
@@ -89,8 +90,11 @@ export function parseClaudeSession(input, fileInfo = {}) {
           images,
           isSidechain: row.isSidechain === true,
           isMeta: row.isMeta === true,
+          // Harness-injected user rows (task-notifications, skill loads, command
+          // output, caveats, meta/sidechain) are lifted, not rendered as turns.
+          internal: injected,
         });
-        if (!firstUser && msgText && !isClaudeInjectedUserMessage(msgText, row)) firstUser = msgText;
+        if (!firstUser && msgText && !injected) firstUser = msgText;
       }
       continue;
     }

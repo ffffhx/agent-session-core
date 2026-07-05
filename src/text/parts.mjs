@@ -224,13 +224,15 @@ export function extractClaudeMessageParts(message) {
 // to add. `row` carries the structural flags (isMeta/isSidechain are on the row,
 // NOT the message).
 const CLAUDE_INJECTED_PREFIX =
-  /^(<command-name>|<command-message>|<command-args>|<local-command-(caveat|stdout|stderr)>|<system-reminder>|<bash-(input|stdout|stderr)>)/i;
+  /^(<command-name>|<command-message>|<command-args>|<local-command-(caveat|stdout|stderr)>|<system-reminder>|<bash-(input|stdout|stderr)>|<task-notification>|<user-prompt-submit-hook>)/i;
 const CLAUDE_CAVEAT = /^(<local-command-caveat>)?\s*Caveat: The messages below were generated/i;
+// Skill invocation injects the skill's SKILL.md as a user row prefixed like this.
+const CLAUDE_SKILL_LOAD = /^Base directory for this skill:/i;
 
 export function isClaudeInjectedUserMessage(text, row) {
   const t = String(text || "").trim();
   const meta = Boolean(row && (row.isMeta === true || row.isSidechain === true));
-  return meta || CLAUDE_INJECTED_PREFIX.test(t) || CLAUDE_CAVEAT.test(t);
+  return meta || CLAUDE_INJECTED_PREFIX.test(t) || CLAUDE_CAVEAT.test(t) || CLAUDE_SKILL_LOAD.test(t);
 }
 
 export function normalizeClaudeTimestamp(value) {
