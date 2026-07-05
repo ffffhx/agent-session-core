@@ -34,6 +34,16 @@ function detectEngineFromFile(path) {
   return null;
 }
 
+/** Yield at most `max` items from an iterable (for head-only summary parses). */
+function* takeLines(iterable, max) {
+  let i = 0;
+  for (const line of iterable) {
+    if (i >= max) break;
+    i += 1;
+    yield line;
+  }
+}
+
 /** Parse raw text (or a line iterable) for a known engine. */
 export function parseSessionText(engine, input, fileInfo = {}) {
   if (engine === "codex") return parseCodexSession(input, fileInfo);
@@ -50,6 +60,12 @@ export function parseSessionText(engine, input, fileInfo = {}) {
  */
 export function parseSessionFile(file, opts = {}) {
   const onWarn = typeof opts.onWarn === "function" ? opts.onWarn : null;
+  // Head-only mode for cheap list summaries: cap how many lines the engine sees
+  // so a multi-MB session isn't fully parsed just to read its header + title.
+  // The session header (codex session_meta / claude first rows) and the first
+  // user message (the title) live in the first lines; events are partial and
+  // messageCount becomes a "has-messages" signal, matching the legacy lister.
+  const maxLines = Number.isFinite(opts.maxLines) && opts.maxLines > 0 ? opts.maxLines : 0;
 
   // Path-driven engine (from discovery) is the first source of truth; content
   // detection is only a fallback when the engine is unknown.
@@ -69,7 +85,9 @@ export function parseSessionFile(file, opts = {}) {
   // `catch { return null }` swallowed into a silent dropped session.
   const state = { truncated: false };
   try {
-    const session = parseSessionText(engine, readLines(file.path, { maxBytes: PARSE_MAX_BYTES, state }), {
+    let lines = readLines(file.path, { maxBytes: PARSE_MAX_BYTES, state });
+    if (maxLines) lines = takeLines(lines, maxLines);
+    const session = parseSessionText(engine, lines, {
       filePath: file.path,
       mtimeMs: file.mtimeMs,
       sizeBytes: file.sizeBytes,
