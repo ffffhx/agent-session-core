@@ -12,6 +12,7 @@ import {
   extractInternalGoalObjective,
   isBootstrapUserMessage,
   truncateForTitle,
+  stripImageTagsForTitle,
   stringifyClaudeContent,
 } from "../text/parts.mjs";
 
@@ -107,7 +108,13 @@ export function parseCodexSession(input, fileInfo = {}) {
         if (goal && !session.goalObjective) session.goalObjective = goal;
         const internal = isBootstrapUserMessage(role, msgText);
         session.events.push({ kind: "message", ts, role, text: msgText, images, internal });
-        if (!internal && role === "user" && !session.title && msgText) session.title = truncateForTitle(msgText);
+        if (!internal && role === "user" && !session.title) {
+          // Derive the title from the first user message that has real text;
+          // strip image markers so an image-only first message falls through
+          // to the next message instead of becoming an "<image path=…>" title.
+          const titleText = stripImageTagsForTitle(msgText);
+          if (titleText) session.title = truncateForTitle(titleText);
+        }
       } else if (ptype === "function_call") {
         session.events.push({
           kind: "tool_call",

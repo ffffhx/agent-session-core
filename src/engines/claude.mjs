@@ -8,7 +8,7 @@
 // input = input_tokens + cache_read + cache_creation (full input); cached = cache_read.
 
 import { toTokenCount, isRecord, safeJsonParse, basename } from "../util.mjs";
-import { extractClaudeMessageParts, stringifyClaudeContent, truncateForTitle, isClaudeInjectedUserMessage } from "../text/parts.mjs";
+import { extractClaudeMessageParts, stringifyClaudeContent, truncateForTitle, stripImageTagsForTitle, isClaudeInjectedUserMessage } from "../text/parts.mjs";
 
 /** @param {string|Iterable<string>} input @param {{filePath:string,mtimeMs?:number,sizeBytes?:number}} fileInfo */
 export function parseClaudeSession(input, fileInfo = {}) {
@@ -128,7 +128,7 @@ export function parseClaudeSession(input, fileInfo = {}) {
   }
 
   session.id = sessionIdFromPath(session.filePath);
-  session.title = truncateForTitle(aiTitle || lastPrompt || firstUser || "");
+  session.title = truncateForTitle(stripImageTagsForTitle(aiTitle || lastPrompt || firstUser || ""));
   return session;
 }
 

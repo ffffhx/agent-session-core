@@ -40,6 +40,17 @@ function stripImageMarkers(text) {
     .trim();
 }
 
+// Strip Codex/Claude inline image markers (`<image …>`, `</image>`, including
+// attributed forms like `<image name=… path=…>`) for title derivation, so an
+// image-first message does not become an "<image path=…>" title (which also
+// leaked the temp file path). Returns the remaining human text, collapsed.
+export function stripImageTagsForTitle(text) {
+  return String(text || "")
+    .replace(/<\/?image\b[^>]*>/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 export function isSafeImageSource(src) {
   if (!src) return false;
   return /^data:image\/(?:png|jpe?g|gif|webp);base64,[A-Za-z0-9+/=\s]+$/i.test(src) || /^https?:\/\//i.test(src);
